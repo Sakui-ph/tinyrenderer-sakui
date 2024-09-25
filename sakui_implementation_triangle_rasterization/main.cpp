@@ -1,9 +1,11 @@
 #include <iostream>
+#include <algorithm>
 #include "tgaimage.h"
 #include "geometry.h"
 
 void line(Vec2i v0, Vec2i v1, TGAImage &image, TGAColor color) // removes all the floating point values and division
 {
+
 	bool steep = false;
 	if (std::abs(v0.x - v1.x) < std::abs(v1.y - v0.y))
 	{
@@ -37,6 +39,7 @@ void line(Vec2i v0, Vec2i v1, TGAImage &image, TGAColor color) // removes all th
 			slope_error -= dx*2;
 		}
 	}	
+
 }
 
 void triangle(Vec2i v0, Vec2i v1, Vec2i v2, TGAImage &image, TGAColor color)
@@ -58,7 +61,7 @@ float lerp(float num0, float num1, float t)
 	return num0 + (num1 - num0) * t;
 }
 
-void fill_triangle(Vec2i t[], TGAImage &image, TGAColor color)
+void fill_triangle(Vec2i t[], TGAImage &image, TGAColor color) // my version
 {
     // main question: how do I get the points between the lines
 
@@ -82,15 +85,129 @@ void fill_triangle(Vec2i t[], TGAImage &image, TGAColor color)
 
     // get the appropriate coordinates and fill it in with a line
 
-    for (float i = 0.; i < 1.; i+=.01)
+    for (float i = 0.; i < 0.1; i+=.01)
     {
         int x0 = lerp(t[0].x, t[1].x, i);
         int y0 = lerp(t[0].y, t[1].y, i);
         int x1 = lerp(t[0].x, t[2].x, i);
         int y1 = lerp(t[0].y, t[2].y, i);
 
-        line(Vec2i(x0, y0), Vec2i(x1, y1), image, color);
+        std::cout << "Line drawn at " << x0 << " " << y0 << " " << x1 << " " << y1 << "\n";
+        line(Vec2i(x0, y0), Vec2i(x1, y1), image, TGAColor(255, x0*3, y0*5, 255));
+        getchar();
     }
+}
+
+void fill_triangle_proper(Vec2i t[], TGAImage &image, TGAColor color)
+{
+    // Step 1: Sort in ascending order
+    if (t[0].y < t[1].y) std::swap(t[0], t[1]);
+    if (t[0].y < t[2].y) std::swap(t[0], t[2]);
+    if (t[1].y < t[2].y) std::swap(t[1], t[2]);
+
+    // Step 2: taking into account the fact that its split into 2 different parts between lines t[0] t[1] and t[2] t[1], draw the first half
+    int total_height = t[0].y - t[2].y; 
+    for (int y = t[1].y; y <= t[0].y; y++)
+    {
+        int segment_height = t[0].y - t[1].y; // take into account the height of the segment we're currently drawing
+        
+        // Get the value for t for both the segments (lerping)
+        float total_lerp_value = (float)(y - t[2].y) / total_height; // subtract with the lowest point to get
+        float segment_lerp_value = (float)(y - t[1].y) / segment_height;
+        Vec2i point_A = t[2] + (t[0] - t[2]) * total_lerp_value;
+        Vec2i point_B = t[1] + (t[0] - t[1]) * segment_lerp_value;
+
+        // Swap if the x value of the reference point (starting point) is not the left-most pixel
+        if (point_A.x > point_B.x) std::swap(point_A, point_B);
+
+        // Draw each point on the same y axis, we don't use line here (i don't know why) 
+        for (int j=point_A.x; j <= point_B.x; j++) { 
+            image.set(j, y, color); 
+        } 
+    }
+
+    // second half
+    for (int y = t[2].y; y <= t[1].y; y++)
+    {
+        int segment_height = t[1].y - t[2].y; // take into account the height of the segment we're currently drawing
+        
+        // Get the value for t for both the segments (lerping)
+        float total_lerp_value = (float)(y - t[2].y) / total_height; // subtract with the lowest point to get
+        float segment_lerp_value = (float)(y - t[2].y) / segment_height;
+        Vec2i point_A = t[2] + (t[0] - t[2]) * total_lerp_value;
+        Vec2i point_B = t[2] + (t[1] - t[2]) * segment_lerp_value;
+
+        // Swap if the x value of the reference point (starting point) is not the left-most pixel
+        if (point_A.x > point_B.x) std::swap(point_A, point_B);
+
+        // Draw each point on the same y axis, we don't use line here (i don't know why) 
+        for (int j=point_A.x; j <= point_B.x; j++) { 
+            image.set(j, y, color); 
+        } 
+    }
+}
+
+// btw, having it just be t[] is verbad hahaha
+void fill_triangle_short(Vec2i t[], TGAImage &image, TGAColor color)
+{
+    // Sort
+    if (t[0].y < t[1].y) std::swap(t[0], t[1]);
+    if (t[0].y < t[2].y) std::swap(t[0], t[2]);
+    if (t[1].y < t[2].y) std::swap(t[1], t[2]);
+
+    // Fill in both halves
+    int total_height = t[0].y - t[2].y; 
+    for (int y = 0; y < total_height; y++)
+    {
+        bool isSecondHalf = y > t[1].y - t[2].y || t[1].y == t[2].y;
+        int segment_height = isSecondHalf? t[0].y - t[1].y : t[1].y - t[2].y;
+
+        float total_lerp_value = (float)y / total_height; 
+        float segment_lerp_value = (float)(y - (isSecondHalf? t[1].y-t[2].y : 0)) / segment_height;
+
+        Vec2i point_A = t[2] + (t[0] - t[2]) * total_lerp_value;
+        Vec2i point_B = (isSecondHalf? t[1] + (t[0] - t[1]) * segment_lerp_value : t[2] + (t[1] - t[2]) * segment_lerp_value) ;
+
+        if (point_A.x > point_B.x) std::swap(point_A, point_B);
+
+        // Draw each point on the same y axis, we don't use line here (i don't know why) 
+        for (int j=point_A.x; j <= point_B.x; j++) { 
+            image.set(j, t[2].y + y, color); 
+        } 
+    }
+}
+
+Vec3f get_barycentric_coords(Vec2i t0, Vec2i t1, Vec2i t3)
+{
+    return Vec3f(1,1,1);
+}
+
+void fill_triangle_barycentric(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color)
+{   
+    // First, we want to get the bounding boxes of the triangle
+    Vec2i bboxmax(0, 0);
+    Vec2i clamp(image.get_width() - 1, image.get_height() - 1);
+    Vec2i bboxmin = clamp;
+
+    Vec2i points[3] = {t0, t1, t2}; 
+
+    // Shrink the bounding boxes to find the smallest box that will fit the triangle
+    for(int i = 0; i < 3; i++)
+    {
+        // from the current max (0),
+        // make the smallest possible point in the triangle the end of the image (if it is outside the image, use clamp)
+        // take the largest from the current value to the point
+        bboxmax.x = std::min(clamp.x, std::max(bboxmax.x, points[i].x));
+        bboxmax.y = std::min(clamp.y, std::max(bboxmax.y, points[i].y));
+
+        bboxmin.x = std::max(0, std::min(bboxmin.x, points[i].x));
+        bboxmin.y = std::max(0, std::min(bboxmin.y, points[i].y));
+    }
+    line(bboxmin, Vec2i(bboxmax.x, bboxmin.y), image, color);
+    line(bboxmin, Vec2i(bboxmin.x, bboxmax.y), image, color);
+    line(bboxmax, Vec2i(bboxmax.x, bboxmin.y), image, color);
+    line(bboxmax, Vec2i(bboxmin.x, bboxmax.y), image, color);
+    line(bboxmax, bboxmin, image, TGAColor(255,150,255,255));
 }
 
 
@@ -107,13 +224,18 @@ int main(int argc, char** argv)
     Vec2i t1[3] = {Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180)}; 
     Vec2i t2[3] = {Vec2i(180, 150), Vec2i(120, 160), Vec2i(130, 180)};
 
-    fill_triangle(t0, image, cyan); 
-    fill_triangle(t1, image, cyan);
-    fill_triangle(t2, image, cyan); 
+    // fill_triangle_short(t0, image, cyan); 
+    // fill_triangle_short(t1, image, cyan);
+    // fill_triangle_short(t2, image, red); 
+
 
     triangle(t0, image, white);
     triangle(t1, image, red);
     triangle(t2, image, green);
+
+    fill_triangle_barycentric(t0[0], t0[1], t0[2], image, red);
+    fill_triangle_barycentric(t1[0], t1[1], t1[2], image, red);
+    fill_triangle_barycentric(t2[0], t2[1], t2[2], image, red);
 
     image.flip_vertically();
     image.write_tga_file("output2.tga");
