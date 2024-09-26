@@ -97,7 +97,6 @@ void fill_triangle(Vec2i t[], TGAImage &image, TGAColor color) // my version
         int x1 = lerp(t[0].x, t[2].x, i);
         int y1 = lerp(t[0].y, t[2].y, i);
 
-        std::cout << "Line drawn at " << x0 << " " << y0 << " " << x1 << " " << y1 << "\n";
         line(Vec2i(x0, y0), Vec2i(x1, y1), image, TGAColor(255, x0*3, y0*5, 255));
         getchar();
     }
@@ -185,10 +184,6 @@ void fill_triangle_short(Vec2i t[], TGAImage &image, TGAColor color)
 Vec3f get_barycentric_coords(Vec2i t0, Vec2i t1, Vec2i t2, Vec2i p)
 {
     Vec3f coords = Vec3f(t2.x - t0.x, t1.x - t0.x, t0.x - p.x)^Vec3f(t2.y - t0.y, t1.y - t0.y, t0.y - p.y);
-    if (coords.z < 0)
-    {
-        return Vec3f(-1, 1, 1);
-    }
     float w = 1.f - (coords.x + coords.y) / coords.z;
     float u = coords.x / coords.z;
     float v = coords.y / coords.z;
@@ -197,7 +192,6 @@ Vec3f get_barycentric_coords(Vec2i t0, Vec2i t1, Vec2i t2, Vec2i p)
 
 void fill_triangle_barycentric(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color)
 {   
-    if (t0.y==t1.y && t0.y==t2.y) return;
     // First, we want to get the bounding boxes of the triangle
     Vec2i bboxmax(0, 0);
     Vec2i clamp(image.get_width() - 1, image.get_height() - 1);
@@ -237,26 +231,6 @@ void fill_triangle_barycentric(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TG
     // line(bboxmax, bboxmin, image, TGAColor(255,150,255,255));
 }
 
-void solution_triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
-    if (t0.y==t1.y && t0.y==t2.y) return; // i dont care about degenerate triangles
-    if (t0.y>t1.y) std::swap(t0, t1);
-    if (t0.y>t2.y) std::swap(t0, t2);
-    if (t1.y>t2.y) std::swap(t1, t2);
-    int total_height = t2.y-t0.y;
-    for (int i=0; i<total_height; i++) {
-        bool second_half = i>t1.y-t0.y || t1.y==t0.y;
-        int segment_height = second_half ? t2.y-t1.y : t1.y-t0.y;
-        float alpha = (float)i/total_height;
-        float beta  = (float)(i-(second_half ? t1.y-t0.y : 0))/segment_height; // be careful: with above conditions no division by zero here
-        Vec2i A =               t0 + (t2-t0)*alpha;
-        Vec2i B = second_half ? t1 + (t2-t1)*beta : t0 + (t1-t0)*beta;
-        if (A.x>B.x) std::swap(A, B);
-        for (int j=A.x; j<=B.x; j++) {
-            image.set(j, t0.y+i, color); // attention, due to int casts t0.y+i != A.y
-        }
-    }
-}
-
 int main(int argc, char** argv)
 {
     TGAColor white(255,255,255,255);
@@ -292,7 +266,7 @@ int main(int argc, char** argv)
             world_coords[j] = v;
         }
 
-        Vec3f normal = (world_coords[0] - world_coords[1])^(world_coords[2] - world_coords[1]);
+        Vec3f normal = (world_coords[2] - world_coords[0])^(world_coords[1] - world_coords[0]);
         normal.normalize();
         float intensity = normal*light_direction;
         
@@ -300,7 +274,7 @@ int main(int argc, char** argv)
 
         // std::cout << intensity;
         if (intensity > 0)
-            triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, color);
+            fill_triangle_barycentric(screen_coords[0], screen_coords[1], screen_coords[2], image, color);
     }
 
     image.flip_vertically();
