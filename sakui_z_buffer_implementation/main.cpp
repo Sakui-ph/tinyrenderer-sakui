@@ -192,6 +192,21 @@ Vec3f get_barycentric_coords(Vec2i t0, Vec2i t1, Vec2i t2, Vec2i p)
     return Vec3f(w, u, v);
 }
 
+Vec3f get_barycentric_coords_z(Vec3i t0, Vec3i t1, Vec3i t2, Vec2i p)
+{
+    Vec3f coords = Vec3f(t2.x - t0.x, t1.x - t0.x, t0.x - p.x)^Vec3f(t2.y - t0.y, t1.y - t0.y, t0.y - p.y);
+
+    if (std::abs(coords.z)>1e-2)
+    {
+        float w = 1.f - (coords.x + coords.y) / coords.z;
+        float u = coords.x / coords.z;
+        float v = coords.y / coords.z;
+        return Vec3f(w, u, v);
+    }
+    return Vec3f(-1, 1, 1);
+
+}
+
 void fill_triangle_barycentric(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color)
 {   
     if (t0.y==t1.y && t0.y==t2.y) return;
@@ -228,6 +243,50 @@ void fill_triangle_barycentric(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TG
     }
 }
 
+void fill_triangle_barycentric_z(Vec3i t0, Vec3i t1, Vec3i t2, TGAImage &image, TGAColor color, float *z_buffer)
+{   
+    if (t0.y==t1.y && t0.y==t2.y) return;
+    // First, we want to get the bounding boxes of the triangle
+    Vec2i bboxmax(0, 0);
+    Vec2i clamp(image.get_width() - 1, image.get_height() - 1);
+    Vec2i bboxmin = clamp;
+
+    Vec3i points[3] = {t0, t1, t2}; 
+
+    // Shrink the bounding boxes to find the smallest box that will fit the triangle
+    for(int i = 0; i < 3; i++)
+    {
+        // from the current max (0),
+        // make the smallest possible point in the triangle the end of the image (if it is outside the image, use clamp)
+        // take the largest from the current value to the point
+        bboxmax.x = std::min(clamp.x, std::max(bboxmax.x, points[i].x));
+        bboxmax.y = std::min(clamp.y, std::max(bboxmax.y, points[i].y));
+
+        bboxmin.x = std::max(0, std::min(bboxmin.x, points[i].x));
+        bboxmin.y = std::max(0, std::min(bboxmin.y, points[i].y));
+    }
+
+    for (int y = bboxmin.y; y < bboxmax.y; y++)
+    {
+        for (int x = bboxmin.x; x < bboxmax.x; x++)
+        {
+            int z_idx = x + y*WIDTH;
+
+            
+            Vec3f barycrd = get_barycentric_coords_z(t0, t1, t2, Vec2i(x, y));
+            if (barycrd.x < 0 || barycrd.y < 0 || barycrd.z < 0)
+                continue;
+            // we get the z value by multiplying the barycentric coordinates with the z values
+            float z_value = barycrd.x * t0.z + barycrd.y *t1.z + barycrd.z *t2.z;
+            if (z_buffer[z_idx] < z_value)
+            {
+                image.set(x, y, color);
+                z_buffer[z_idx] = z_value;
+            }
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     TGAColor white(255,255,255,255);
@@ -248,18 +307,21 @@ int main(int argc, char** argv)
     {
         model = new Model("obj/african_head.obj");
     }
-
+    
+    float *z_buffer = new float[WIDTH*HEIGHT];
+    for (int i=WIDTH*HEIGHT; i--; z_buffer[i] = -std::numeric_limits<float>::max());
 
     for (int i = 0; i < model->nfaces(); i++)
     {
         std::vector<int> face = model->face(i);
-        Vec2i screen_coords[3];
+        Vec3i screen_coords[3];
         Vec3f world_coords[3];
         for (int j = 0; j < 3; j++)
         {
             Vec3f v = model->vert(face[j]);
             screen_coords[j].x = (v.x+1.)*WIDTH/2.;
             screen_coords[j].y = (v.y+1.)*HEIGHT/2.;
+            screen_coords[j].z = v.z;
             world_coords[j] = v;
         }
 
@@ -270,7 +332,7 @@ int main(int argc, char** argv)
         TGAColor color = TGAColor(255*intensity, 255*intensity,255*intensity,255);
 
         if (intensity > 0)
-            fill_triangle_barycentric(screen_coords[0], screen_coords[1], screen_coords[2], image, color);
+            fill_triangle_barycentric_z(screen_coords[0], screen_coords[1], screen_coords[2], image, color, z_buffer);
             // fill_triangle_barycentric_z(screen_coords[0], screen_coords[1], screen_coords[2], image, color, zbuffer, world_coords);
     }
 
