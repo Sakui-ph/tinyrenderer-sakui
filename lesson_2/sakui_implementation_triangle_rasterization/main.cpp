@@ -177,9 +177,17 @@ void fill_triangle_short(Vec2i t[], TGAImage &image, TGAColor color)
     }
 }
 
-Vec3f get_barycentric_coords(Vec2i t0, Vec2i t1, Vec2i t3)
+Vec3f get_barycentric_coords(Vec2i t0, Vec2i t1, Vec2i t2, Vec2i p)
 {
-    return Vec3f(1,1,1);
+    Vec3f coords = Vec3f(t2.x - t0.x, t1.x - t0.x, t0.x - p.x)^Vec3f(t2.y - t0.y, t1.y - t0.y, t0.y - p.y);
+    if (coords.z < 0)
+    {
+        return Vec3f(-1, 1, 1);
+    }
+    float w = 1.f - (coords.x + coords.y) / coords.z;
+    float u = coords.x / coords.z;
+    float v = coords.y / coords.z;
+    return Vec3f(w, u, v);
 }
 
 void fill_triangle_barycentric(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color)
@@ -203,11 +211,26 @@ void fill_triangle_barycentric(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TG
         bboxmin.x = std::max(0, std::min(bboxmin.x, points[i].x));
         bboxmin.y = std::max(0, std::min(bboxmin.y, points[i].y));
     }
+
+    for (int y = bboxmin.y; y < bboxmax.y; y++)
+    {
+        for (int x = bboxmin.x; x < bboxmax.x; x++)
+        {
+            Vec3f barycrd = get_barycentric_coords(t0, t1, t2, Vec2i(x, y));
+            if (barycrd.x < 0 || barycrd.y < 0 || barycrd.z < 0)
+                continue;
+            image.set(x, y, color);
+        }
+    }
+
+    // draw the bounding boxes
     line(bboxmin, Vec2i(bboxmax.x, bboxmin.y), image, color);
     line(bboxmin, Vec2i(bboxmin.x, bboxmax.y), image, color);
     line(bboxmax, Vec2i(bboxmax.x, bboxmin.y), image, color);
     line(bboxmax, Vec2i(bboxmin.x, bboxmax.y), image, color);
     line(bboxmax, bboxmin, image, TGAColor(255,150,255,255));
+
+
 }
 
 
